@@ -1,9 +1,7 @@
-name: Mirror repo to S3
+name: Backup Repo S3
 on:
-  workflow_dispatch:
-  push:
-    branches:
-      - master
+  schedule:
+        - cron: '0 0 * * 1'
 jobs:
   s3Backup:
     runs-on: ubuntu-latest
@@ -17,3 +15,22 @@ jobs:
           SECRET_ACCESS_KEY: ${{ secrets.SECRET_ACCESS_KEY_PROD }}
         with:
           args: --overwrite --remove
+  
+  notificar:
+    needs: s3Backup
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_DEV }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}
+          aws-region: us-east-1
+
+      - name: Enviar notificação simples via SNS
+        run: |
+            aws sns publish \
+              --topic-arn ${{ secrets.SNS_TOPIC_ARN }} \
+              --message "Backup Failed for repository: ${{ github.repository }} – Workflow: ${{ github.workflow }} – Logs: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              --subject "Backup Failed: ${{ github.repository }}"
